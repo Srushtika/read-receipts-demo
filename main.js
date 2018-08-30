@@ -11,11 +11,12 @@ var you = {};
 
 //----------------------------AblyStuff
 var myId = "id-" + Math.random().toString(36).substr(2, 16)
-console.log("My ID is "+ myId)
+console.log("My ID is " + myId)
 var apiKey = '<ABLY-API-KEY>'
 var ably = new Ably.Realtime({
     key: apiKey,
-    clientId: myId
+    clientId: myId,
+    echoMessages: false
 })
 console.log("My avatar is " + myAvatar)
 var chatChannel = ably.channels.get("chat")
@@ -25,25 +26,24 @@ var presenceChannel = ably.channels.get("presence")
 
 chatChannel.subscribe("userAvatar", (data) => {
     var dataObj = JSON.parse(JSON.stringify(data))
-    if(dataObj.clientId != myId){
+    if (dataObj.clientId != myId) {
         otherAvatar = dataObj.data.avatar
         you.avatar = otherAvatar
         console.log('Other users\'s avatar is ' + otherAvatar)
     }
-    
 })
 
-presenceChannel.presence.subscribe('enter', function(member) {
-    if(member.clientId != myId){
+presenceChannel.presence.subscribe('enter', function (member) {
+    if (member.clientId != myId) {
         chatChannel.publish("userAvatar", {
             "avatar": myAvatar
         })
     }
-  });
+});
 presenceChannel.presence.enter();
 presenceChannel.presence.get(function (err, members) {
     for (var i in members) {
-        if(members[i].clientId != myId){
+        if (members[i].clientId != myId) {
             chatChannel.publish("userAvatar", {
                 "avatar": myAvatar
             })
@@ -51,7 +51,21 @@ presenceChannel.presence.get(function (err, members) {
     }
 });
 //----------------------------
-
+/*
+function sendMyMessage() {
+    
+    console.log('Send clicked by ' + myId)
+    console.log(document.getElementById("myMsg"))
+    var text = document.getElementById("myMsg").val
+    if (text !== "") {
+        insertChat("me", text);
+        chatChannel.publish("chatMessage", {
+            message: text
+        })
+        console.log('Published')
+        $(this).val('');
+    }
+}*/
 
 
 function formatAMPM(date) {
@@ -65,46 +79,59 @@ function formatAMPM(date) {
     return strTime;
 }
 
-
 function insertChat(who, text) {
     var control = "";
     var date = formatAMPM(new Date());
 
     if (who == "me") {
-        control = '<li style="width:100%">' +
-            '<div class="msj macro">' +
-            '<div class="avatar"><img class="img-circle" style="width:100%;" src="' + me.avatar + '" /></div>' +
-            '<div class="text text-l">' +
+        console.log('Entered me')
+        control = '<li class="self">' +
+            '<div style="color: #e0e0de" class="avatar">' +
+            '<img src="' + me.avatar + '" />' +
+            '/</div>' +
+            '<div class="messages">' +
             '<p>' + text + '</p>' +
-            '<p><small>' + date + '</small></p>' +
-            '</div>' +
+            '<div><time id="meTime" datetime="2009-11-13T20:00">' + date + ' status'+ '</time>' +
             '</div>' +
             '</li>';
-    } else {
-        control = '<li style="width:100%;">' +
-            '<div class="msj-rta macro">' +
-            '<div class="text text-r">' +
-            '<p>' + text + '</p>' +
-            '<p><small>' + date + '</small></p>' +
-            '</div>' +
-            '<div class="avatar" style="padding:0px 0px 0px 10px !important"><img class="img-circle" style="width:100%;" src="' + you.avatar + '" /></div>' +
-            '</li>';
-    }
-    setTimeout(
-        function () {
-            $("ul").append(control).scrollTop($("ul").prop('scrollHeight'));
-        }, time);
 
+
+            /*
+            <li class="other">
+                <div class="avatar">
+                    <img src="images/avatar_3.png" />
+                </div>
+                <div class="messages">
+                    <p>yeah, they do early flights cause they connect with big airports. they wanna get u to your connection</p>
+                    <time datetime="2009-11-13T20:00">Timothy • 51 min</time>
+                </div>
+            </li>
+            */
+    } else {
+        console.log('Entered you')
+        control = '<li class="other">' +
+        '<div style="color: #e0e0de" class="avatar">' +
+        '<img src="' + you.avatar + '" />' +
+        '/</div>' +
+        '<div class="messages">' +
+        '<p>' + text + '</p>' +
+        '<time id="youTime" datetime="2009-11-13T20:00">' + date + '</time>' +
+        '</div>' +
+        '</li>';
+    }
+      $("ul").append(control).scrollTop($("ul").prop('scrollHeight'));
+    
 }
 
 function resetChat() {
     $("ul").empty();
 }
 
-$(".sendMessage").on("click", () => {
-    //if (e.which == 13){
+function sendMyMessage() {
     console.log('Send clicked by ' + myId)
-    var text = $(this).val();
+    console.log(document.getElementById("myMsg"))
+    var text = document.getElementById("myMsg").value
+    console.log('Text is '+text)
     if (text !== "") {
         insertChat("me", text);
         chatChannel.publish("chatMessage", {
@@ -113,12 +140,11 @@ $(".sendMessage").on("click", () => {
         console.log('Published')
         $(this).val('');
     }
-    //}
-});
-
+}
+/*
 $('body > div > div > div:nth-child(2) > span').click(function () {
     $(".mytext").trigger({ type: 'keydown', which: 13, keyCode: 13 });
-})
+})*/
 
 //-- Clear Chat
 resetChat();
@@ -127,6 +153,7 @@ resetChat();
 chatChannel.subscribe("chatMessage", (data) => {
     console.log('Received')
     var dataObj = JSON.parse(JSON.stringify(data))
+    console.log(dataObj)
     var message = dataObj.data.message
     insertChat("you", message);
 })
