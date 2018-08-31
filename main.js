@@ -3,11 +3,10 @@ function getRandomArbitrary(min, max) {
 }
 var myAvatar = "images/avatar_" + getRandomArbitrary(1, 10) + ".png"
 var otherAvatar
-//avatar2 = "images/avatar_"+getRandomArbitrary(1,10)+".png"
 var me = {};
 me.avatar = myAvatar
 var you = {};
-//you.avatar = avatar2
+var msgObjArray = [];
 
 //----------------------------AblyStuff
 var myId = "id-" + Math.random().toString(36).substr(2, 16)
@@ -20,9 +19,8 @@ var ably = new Ably.Realtime({
 })
 console.log("My avatar is " + myAvatar)
 var chatChannel = ably.channels.get("chat")
-var readReceiptsChannel = ably.channels.get("read-recipts")
+var readReceiptsChannel = ably.channels.get("read-receipts")
 var presenceChannel = ably.channels.get("presence")
-//presenceChannel.presence.enter();
 
 chatChannel.subscribe("userAvatar", (data) => {
     var dataObj = JSON.parse(JSON.stringify(data))
@@ -50,23 +48,6 @@ presenceChannel.presence.get(function (err, members) {
         }
     }
 });
-//----------------------------
-/*
-function sendMyMessage() {
-    
-    console.log('Send clicked by ' + myId)
-    console.log(document.getElementById("myMsg"))
-    var text = document.getElementById("myMsg").val
-    if (text !== "") {
-        insertChat("me", text);
-        chatChannel.publish("chatMessage", {
-            message: text
-        })
-        console.log('Published')
-        $(this).val('');
-    }
-}*/
-
 
 function formatAMPM(date) {
     var hours = date.getHours();
@@ -79,10 +60,12 @@ function formatAMPM(date) {
     return strTime;
 }
 
-function insertChat(who, text) {
+function insertChat(who, text, currentMsgId) {
     var control = "";
     var date = formatAMPM(new Date());
+    var seenStatus = false
 
+    console.log('Inserting Id' + currentMsgId)
     if (who == "me") {
         console.log('Entered me')
         control = '<li class="self">' +
@@ -91,60 +74,97 @@ function insertChat(who, text) {
             '/</div>' +
             '<div class="messages">' +
             '<p>' + text + '</p>' +
-            '<div><time id="meTime" datetime="2009-11-13T20:00">' + date + ' status'+ '</time>' +
+            '<div><time datetime="2009-11-13T20:00">' + date + '<div style="text-align:right;" id="' + currentMsgId + '"> sent </div>' + '</time>' +
             '</div>' +
             '</li>';
-
-
-            /*
-            <li class="other">
-                <div class="avatar">
-                    <img src="images/avatar_3.png" />
-                </div>
-                <div class="messages">
-                    <p>yeah, they do early flights cause they connect with big airports. they wanna get u to your connection</p>
-                    <time datetime="2009-11-13T20:00">Timothy • 51 min</time>
-                </div>
-            </li>
-            */
     } else {
         console.log('Entered you')
         control = '<li class="other">' +
-        '<div style="color: #e0e0de" class="avatar">' +
-        '<img src="' + you.avatar + '" />' +
-        '/</div>' +
-        '<div class="messages">' +
-        '<p>' + text + '</p>' +
-        '<time id="youTime" datetime="2009-11-13T20:00">' + date + '</time>' +
-        '</div>' +
-        '</li>';
+            '<div style="color: #e0e0de" class="avatar">' +
+            '<img src="' + you.avatar + '" />' +
+            '/</div>' +
+            '<div class="messages">' +
+            '<p>' + text + '</p>' +
+            '<div><time datetime="2009-11-13T20:00">' + date + '</time>' +
+            '</div>' +
+            '</li>';
+        if (document.hasFocus()) {
+            for (var i = 0; i < msgObjArray.length; i++) {
+                seenStatus = true
+            }
+        }
+        readReceiptsChannel.publish("receipt", {
+            "delivered": true,
+            "msgId": currentMsgId,
+            "seen": seenStatus,
+            "singleMsgSeen": true
+        })
     }
-      $("ul").append(control).scrollTop($("ul").prop('scrollHeight'));
-    
+    var seenObj = {}
+    seenObj["msgId"] = currentMsgId
+    seenObj["seen"] = seenStatus
+    msgObjArray.push(seenObj)
+    $("ul").append(control).scrollTop($("ul").prop('scrollHeight'));
+
 }
+
+window.onfocus = function () {
+    console.log('Window now focused')
+    readReceiptsChannel.publish("receipt", {
+        "singleMsgSeen": false,
+        "seen": true
+    })
+
+};
+
 
 function resetChat() {
     $("ul").empty();
 }
 
 function sendMyMessage() {
+    var currentMsgId = "msg-id-" + Math.random().toString(36).substr(2, 6)
     console.log('Send clicked by ' + myId)
     console.log(document.getElementById("myMsg"))
     var text = document.getElementById("myMsg").value
-    console.log('Text is '+text)
+    console.log('Text is ' + text)
     if (text !== "") {
-        insertChat("me", text);
+        insertChat("me", text, currentMsgId);
         chatChannel.publish("chatMessage", {
-            message: text
+            message: text,
+            msgId: currentMsgId
         })
         console.log('Published')
         $(this).val('');
     }
 }
-/*
-$('body > div > div > div:nth-child(2) > span').click(function () {
-    $(".mytext").trigger({ type: 'keydown', which: 13, keyCode: 13 });
-})*/
+
+readReceiptsChannel.subscribe("receipt", (data) => {
+    console.log('Receipt Received')
+    var dataObj = JSON.parse(JSON.stringify(data))
+    if (dataObj.data.singleMsgSeen) {
+        var receiptMsgId = dataObj.data.msgId
+        console.log(receiptMsgId)
+        if (dataObj.data.seen) {
+            if (document.getElementById(receiptMsgId)) {
+                (document.getElementById(receiptMsgId)).innerHTML = 'seen'
+            }
+        } else if (dataObj.data.delivered) {
+            if (document.getElementById(receiptMsgId)) {
+                (document.getElementById(receiptMsgId)).innerHTML = 'delivered'
+            }
+        }
+    } else if (!dataObj.data.singleMsgSeen) {
+        for (var i = 0; i < msgObjArray.length; i++) {
+            var id = msgObjArray[i].msgId
+            console.log('Inside on focus ids are' + id)
+            if (document.getElementById(id)) {
+                (document.getElementById(id)).innerHTML = 'seen'
+            }
+        }
+    }
+
+})
 
 //-- Clear Chat
 resetChat();
@@ -155,5 +175,6 @@ chatChannel.subscribe("chatMessage", (data) => {
     var dataObj = JSON.parse(JSON.stringify(data))
     console.log(dataObj)
     var message = dataObj.data.message
-    insertChat("you", message);
+    var myMsgId = dataObj.data.msgId
+    insertChat("you", message, myMsgId);
 })
